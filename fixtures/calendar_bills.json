@@ -1,0 +1,46 @@
+[
+  {
+    "bill_id": "bill_rent_nov",
+    "name": "Greenwood Apts House Rent",
+    "category": "rent_utilities",
+    "amount_inr": 15000.00,
+    "amount_paise": 1500000,
+    "due_date": "2026-11-28",
+    "is_fixed": true,
+    "status": "scheduled_unpaid",
+    "payee": "Landlord - Greenwood Apts"
+  },
+  {
+    "bill_id": "bill_electricity_nov",
+    "name": "BESCOM Electricity Bill",
+    "category": "rent_utilities",
+    "amount_inr": 2500.00,
+    "amount_paise": 250000,
+    "due_date": "2026-11-02",
+    "is_fixed": true,
+    "status": "paid",
+    "payee": "BESCOM"
+  },
+  {
+    "bill_id": "bill_broadband_nov",
+    "name": "Airtel Fiber Broadband",
+    "category": "rent_utilities",
+    "amount_inr": 1500.00,
+    "amount_paise": 150000,
+    "due_date": "2026-11-02",
+    "is_fixed": true,
+    "status": "paid",
+    "payee": "Airtel"
+  },
+  {
+    "bill_id": "bill_streamflix_nov",
+    "name": "StreamFlix Premium Subscription",
+    "category": "subscriptions",
+    "amount_inr": 699.00,
+    "amount_paise": 69900,
+    "due_date": "2026-11-20",
+    "is_fixed": true,
+    "status": "scheduled_unpaid",
+    "payee": "StreamFlix"
+  }
+]

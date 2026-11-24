@@ -1,0 +1,74 @@
+[
+  {
+    "id": "email_001",
+    "timestamp": "2026-11-03T10:15:00",
+    "sender": "auto-confirm@amazon.in",
+    "subject": "Order Confirmation: Echo Dot & Accessories",
+    "body": "Thank you for your order! Order #AMZ-IND-8839210-991. Total amount: INR 2,499.00 paid via UPI. Estimated delivery: 6 Nov 2026.",
+    "amount_inr": 2499.00,
+    "amount_paise": 249900,
+    "merchant": "Amazon India",
+    "order_ref": "AMZ-IND-8839210-991",
+    "category": "shopping"
+  },
+  {
+    "id": "email_002",
+    "timestamp": "2026-11-05T14:30:00",
+    "sender": "order-update@amazon.in",
+    "subject": "Order Cancelled: Order #AMZ-IND-8839210-991",
+    "body": "Your order #AMZ-IND-8839210-991 has been cancelled successfully as per your request. A refund of INR 2,499.00 will be credited to your original payment method within 5 business days (by 10 Nov 2026).",
+    "amount_inr": 2499.00,
+    "amount_paise": 249900,
+    "merchant": "Amazon India",
+    "order_ref": "AMZ-IND-8839210-991",
+    "category": "shopping"
+  },
+  {
+    "id": "email_003",
+    "timestamp": "2026-11-12T09:00:00",
+    "sender": "billing@streamflix.tv",
+    "subject": "Upcoming Price Revision for your StreamFlix Premium Plan",
+    "body": "Dear Subscriber, starting from your next billing cycle on 20 Nov 2026, the monthly subscription rate for StreamFlix Premium will increase from INR 499.00 to INR 699.00 per month.",
+    "previous_amount_paise": 49900,
+    "current_amount_paise": 69900,
+    "merchant": "StreamFlix",
+    "category": "subscriptions",
+    "next_billing_date": "2026-11-20"
+  },
+  {
+    "id": "email_004",
+    "timestamp": "2026-11-16T18:45:00",
+    "sender": "orders@urbantribe.in",
+    "subject": "Order Placed: Urban Tribe Laptop Backpack",
+    "body": "Your order #UT-99182 for Urban Tribe Laptop Bag has been confirmed. Total payable: INR 2,200.00. Payment method: Cash on Delivery / Pay on Delivery due on 25 Nov 2026.",
+    "amount_inr": 2200.00,
+    "amount_paise": 220000,
+    "merchant": "Urban Tribe",
+    "order_ref": "UT-99182",
+    "category": "shopping"
+  },
+  {
+    "id": "email_005",
+    "timestamp": "2026-11-17T11:20:00",
+    "sender": "support@boataudio.com",
+    "subject": "Order Received: boAt Airdopes 141",
+    "body": "Thanks for shopping with boAt! Order #BT-55412 for INR 1,800.00 has been received. Expected delivery and BNPL settlement date: 25 Nov 2026.",
+    "amount_inr": 1800.00,
+    "amount_paise": 180000,
+    "merchant": "Boat Audio",
+    "order_ref": "BT-55412",
+    "category": "shopping"
+  },
+  {
+    "id": "email_006",
+    "timestamp": "2026-11-17T21:10:00",
+    "sender": "confirm@myntra.com",
+    "subject": "Myntra Order Confirmation #MYN-449102",
+    "body": "Woohoo! Your order for Nike Revolution Sneakers is confirmed. Amount: INR 3,400.00. Scheduled delivery & pay date: 25 Nov 2026.",
+    "amount_inr": 3400.00,
+    "amount_paise": 340000,
+    "merchant": "Myntra",
+    "order_ref": "MYN-449102",
+    "category": "shopping"
+  }
+]
