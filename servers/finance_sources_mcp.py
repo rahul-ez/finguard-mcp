@@ -201,21 +201,31 @@ def draft_action_package(action_kind: str, lifecycle_id: str, approval_token: st
 
     cursor.execute("SELECT * FROM transaction_lifecycles WHERE lifecycle_id = ?", (lifecycle_id,))
     lc = cursor.fetchone()
+
+    # If not found in lifecycles, check subscriptions
+    sub = None
+    if not lc:
+        cursor.execute(
+            "SELECT * FROM subscriptions WHERE sub_id = ? OR merchant_normalized LIKE ?",
+            (lifecycle_id, f"%{lifecycle_id}%"),
+        )
+        sub = cursor.fetchone()
+
     conn.close()
 
-    if not lc:
+    if not lc and not sub:
         return DraftPackage(
             action_kind="refund_escalation",
             lifecycle_id=lifecycle_id,
-            draft_text=f"Error: Lifecycle {lifecycle_id} not found in database.",
+            draft_text=f"Error: Record {lifecycle_id} not found in database.",
             sent=False,
         )
 
-    merchant = lc["merchant_normalized"]
-    amt_str = paise_to_rupees(lc["expected_amount_paise"])
-    order_ref = lc["order_ref"] or "N/A"
-    upi_utr = lc["upi_utr"] or "N/A"
-    expected_date = lc["expected_refund_by"] or "N/A"
+    merchant = lc["merchant_normalized"] if lc else sub["merchant_normalized"]
+    amt_str = paise_to_rupees(lc["expected_amount_paise"]) if lc else paise_to_rupees(sub["current_amount_paise"])
+    order_ref = (lc["order_ref"] if lc and lc["order_ref"] else "N/A")
+    upi_utr = (lc["upi_utr"] if lc and lc["upi_utr"] else "N/A")
+    expected_date = (lc["expected_refund_by"] if lc and lc["expected_refund_by"] else "N/A")
 
     if action_kind == "refund_escalation":
         subject = f"URGENT: Missing Refund Escalation for Order #{order_ref} - {amt_str}"

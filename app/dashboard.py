@@ -41,28 +41,6 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Custom Styling
-st.markdown(
-    """
-    <style>
-    .main-title { font-size: 2.2rem; font-weight: 700; color: #1E293B; margin-bottom: 0.2rem; }
-    .sub-title { font-size: 1.05rem; color: #64748B; margin-bottom: 1.5rem; }
-    .kpi-card { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px; padding: 1.2rem; text-align: center; }
-    .kpi-value { font-size: 1.8rem; font-weight: 700; color: #0F172A; }
-    .kpi-label { font-size: 0.85rem; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; }
-    .alert-card-danger { background-color: #FEF2F2; border-left: 5px solid #EF4444; padding: 1rem; border-radius: 6px; margin-bottom: 0.8rem; }
-    .alert-card-warning { background-color: #FFFBEB; border-left: 5px solid #F59E0B; padding: 1rem; border-radius: 6px; margin-bottom: 0.8rem; }
-    .alert-card-info { background-color: #EFF6FF; border-left: 5px solid #3B82F6; padding: 1rem; border-radius: 6px; margin-bottom: 0.8rem; }
-    .badge-pill { display: inline-block; padding: 3px 10px; font-size: 11px; font-weight: 600; border-radius: 12px; }
-    .badge-overdue { background: #FEE2E2; color: #991B1B; }
-    .badge-ordered { background: #FEF3C7; color: #92400E; }
-    .badge-debited { background: #E0E7FF; color: #3730A3; }
-    .badge-refunded { background: #D1FAE5; color: #065F46; }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
 # Sidebar Context
 st.sidebar.title("🛡️ FinGuard MCP")
 st.sidebar.markdown("**Make MCP Matter: Less Magic, More Utility**")
@@ -81,53 +59,57 @@ month_key = ref_date_str[:7] if ref_date_str else "2026-11"
 
 st.sidebar.info(f"**Billing Cycle:** {month_key}\n\n**Days Elapsed:** 18 | **Days Left:** 12")
 
-# Main Header
-st.markdown("<div class='main-title'>FinGuard Financial Consequence Agent</div>", unsafe_allow_html=True)
+# Main Header (Theme-adaptive)
+st.title("🛡️ FinGuard Financial Consequence Agent")
 st.markdown(
-    "<div class='sub-title'>Expense trackers tell you what already happened. "
-    "<strong>FinGuard tells you what it will do to your savings and bills before you run out of cash.</strong></div>",
-    unsafe_allow_html=True,
+    "Expense trackers tell you what already happened. "
+    "**FinGuard tells you what it will do to your savings and bills *before* you run out of cash.**"
 )
+st.write("")
 
 # Run deterministic consequence engine
 report = consequence_engine.run_consequence_engine(month_key, ref_date_str)
 budget_ctx = consequence_engine.get_budget_context(month_key)
 profile = budget_ctx["profile"]
 
-# Top KPI Metric Row
+# Top KPI Metric Row (Native Streamlit Metrics: 100% Theme-Adaptive)
 kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
 with kpi1:
-    st.markdown(
-        f"<div class='kpi-card'><div class='kpi-value'>{paise_to_rupees(profile['monthly_income_paise'])}</div>"
-        f"<div class='kpi-label'>Monthly Income</div></div>",
-        unsafe_allow_html=True,
+    st.metric(
+        label="Monthly Take-Home",
+        value=paise_to_rupees(profile["monthly_income_paise"]),
     )
 with kpi2:
-    st.markdown(
-        f"<div class='kpi-card'><div class='kpi-value' style='color:#059669;'>{paise_to_rupees(report.safe_to_spend_today_paise)}/d</div>"
-        f"<div class='kpi-label'>Safe-to-Spend Today</div></div>",
-        unsafe_allow_html=True,
+    st.metric(
+        label="Safe-to-Spend Today",
+        value=f"{paise_to_rupees(report.safe_to_spend_today_paise)}/d",
+        help="Deterministic daily discretionary allowance after accounting for upcoming fixed bills, pending orders, and savings target.",
     )
 with kpi3:
-    st.markdown(
-        f"<div class='kpi-card'><div class='kpi-value' style='color:#D97706;'>{paise_to_rupees(report.projected_savings_paise)}</div>"
-        f"<div class='kpi-label'>Projected Savings (Goal: {paise_to_rupees(profile['savings_target_paise'])})</div></div>",
-        unsafe_allow_html=True,
+    savings_delta = report.projected_savings_paise - profile["savings_target_paise"]
+    st.metric(
+        label="Projected Savings",
+        value=paise_to_rupees(report.projected_savings_paise),
+        delta=f"{paise_to_rupees(savings_delta)} vs Goal" if savings_delta != 0 else "On Target",
+        delta_color="normal" if savings_delta >= 0 else "inverse",
+        help=f"Target savings goal is {paise_to_rupees(profile['savings_target_paise'])}.",
     )
 with kpi4:
-    st.markdown(
-        f"<div class='kpi-card'><div class='kpi-value'>{paise_to_rupees(report.remaining_liquid_cash_paise)}</div>"
-        f"<div class='kpi-label'>Liquid Balance Available</div></div>",
-        unsafe_allow_html=True,
+    st.metric(
+        label="Liquid Cash Available",
+        value=paise_to_rupees(report.remaining_liquid_cash_paise),
+        help="Current liquid balance in bank account before payday.",
     )
 with kpi5:
-    st.markdown(
-        f"<div class='kpi-card'><div class='kpi-value' style='color:#DC2626;'>{len(report.alerts)}</div>"
-        f"<div class='kpi-label'>Active Consequence Alerts</div></div>",
-        unsafe_allow_html=True,
+    st.metric(
+        label="Active Consequence Alerts",
+        value=f"{len(report.alerts)} active",
+        delta="Action Required" if report.alerts else "All Clear",
+        delta_color="inverse" if report.alerts else "normal",
     )
 
 st.write("")
+st.markdown("---")
 
 # Navigation Tabs
 tab_alerts, tab_simulate, tab_lifecycles, tab_gate = st.tabs([
@@ -142,49 +124,41 @@ tab_alerts, tab_simulate, tab_lifecycles, tab_gate = st.tabs([
 # =============================================================================
 with tab_alerts:
     st.subheader("Deterministic Consequence Warnings (Ranked by Financial Impact)")
-    st.caption("Calculated purely via closed-form equations in Python - zero LLM arithmetic.")
+    st.caption("Calculated purely via closed-form equations in Python — zero LLM hallucinations or arithmetic.")
 
     for alert in report.alerts:
         if alert.kind == "STACKED_OUTFLOWS":
-            st.markdown(
-                f"<div class='alert-card-danger'>"
-                f"<h4>⚠️ Scenario B: Stacked Outflows & Rent Collision (Shortfall: {paise_to_rupees(alert.impact_paise)})</h4>"
-                f"<p>{alert.message}</p>"
-                f"</div>",
-                unsafe_allow_html=True,
+            st.error(
+                f"### ⚠️ Scenario B: Stacked Outflows & Rent Collision (Shortfall: {paise_to_rupees(alert.impact_paise)})\n\n"
+                f"{alert.message}",
+                icon="⚠️",
             )
         elif alert.kind == "REFUND_OVERDUE":
-            st.markdown(
-                f"<div class='alert-card-danger'>"
-                f"<h4>⏳ Scenario D: Missing Refund SLA Breach (Locked Cash: {paise_to_rupees(alert.impact_paise)})</h4>"
-                f"<p>{alert.message}</p>"
-                f"</div>",
-                unsafe_allow_html=True,
+            st.error(
+                f"### ⏳ Scenario D: Missing Refund SLA Breach (Locked Cash: {paise_to_rupees(alert.impact_paise)})\n\n"
+                f"{alert.message}",
+                icon="⏳",
             )
             col_draft1, col_draft2 = st.columns([1, 4])
             with col_draft1:
                 if st.button("Generate Dispute Draft", key=f"btn_draft_{alert.lifecycle_id}"):
                     draft = draft_action_package("refund_escalation", alert.lifecycle_id or "lc_amz_2499_01", "token")
-                    st.text_area("Dispute Escalation Email Draft (Ready to Send)", draft.draft_text, height=220)
+                    st.text_area("Dispute Escalation Email Draft (Ready to Send)", draft.draft_text, height=240)
         elif alert.kind == "VELOCITY":
-            st.markdown(
-                f"<div class='alert-card-warning'>"
-                f"<h4>📈 Scenario C: Category Velocity Overrun & Savings Erosion (Impact: {paise_to_rupees(alert.impact_paise)})</h4>"
-                f"<p>{alert.message}</p>"
-                f"</div>",
-                unsafe_allow_html=True,
+            st.warning(
+                f"### 📈 Scenario C: Category Velocity Overrun & Savings Erosion (Impact: {paise_to_rupees(alert.impact_paise)})\n\n"
+                f"{alert.message}",
+                icon="📈",
             )
         elif alert.kind == "PRICE_HIKE":
-            st.markdown(
-                f"<div class='alert-card-info'>"
-                f"<h4>💳 Scenario A: Subscription Price Hike (Annual Impact: {paise_to_rupees(alert.impact_paise)})</h4>"
-                f"<p>{alert.message}</p>"
-                f"</div>",
-                unsafe_allow_html=True,
+            st.info(
+                f"### 💳 Scenario A: Subscription Price Hike (Annual Impact: {paise_to_rupees(alert.impact_paise)})\n\n"
+                f"{alert.message}",
+                icon="💳",
             )
             if st.button("Draft Cancellation Notice", key="btn_sub_cancel"):
-                sub_draft = draft_action_package("subscription_cancel", "lc_sub_spot_01", "token")
-                st.text_area("Subscription Cancellation Notice Draft", sub_draft.draft_text, height=180)
+                sub_draft = draft_action_package("subscription_cancel", "StreamFlix", "token")
+                st.text_area("Subscription Cancellation Notice Draft", sub_draft.draft_text, height=200)
 
 # =============================================================================
 # TAB 2: "Can I Buy This?" What-If Simulator
@@ -214,7 +188,7 @@ with tab_simulate:
     with res1:
         st.metric(
             label="Daily Safe-to-Spend",
-            value=paise_to_rupees(sim_result.safe_to_spend_after_paise) + "/day",
+            value=f"{paise_to_rupees(sim_result.safe_to_spend_after_paise)}/day",
             delta=f"-{paise_to_rupees(sim_result.safe_to_spend_before_paise - sim_result.safe_to_spend_after_paise)}",
             delta_color="inverse",
         )
@@ -252,20 +226,19 @@ with tab_lifecycles:
     formatted_lcs = []
     for lc in lcs:
         st_val = lc["lifecycle_status"]
-        badge = f"<span class='badge-pill badge-{st_val.lower().replace('_', '-')}'>{st_val}</span>"
         formatted_lcs.append({
             "Lifecycle ID": lc["lifecycle_id"],
             "Merchant": lc["merchant_normalized"],
             "Category": lc["category"].title(),
-            "Expected": paise_to_rupees(lc["expected_amount_paise"]),
+            "Expected Amount": paise_to_rupees(lc["expected_amount_paise"]),
             "Settled Net": paise_to_rupees(lc["settled_net_paise"]),
-            "Status": st_val,
-            "Order Ref": lc["order_ref"] or "-",
-            "UPI UTR": lc["upi_utr"] or "-",
+            "Lifecycle Status": st_val,
+            "Order Reference": lc["order_ref"] or "-",
+            "Bank UPI UTR": lc["upi_utr"] or "-",
             "Refund SLA Date": lc["expected_refund_by"] or "-",
         })
 
-    st.dataframe(formatted_lcs, width=None)
+    st.dataframe(formatted_lcs, width="stretch")
 
 # =============================================================================
 # TAB 4: Human-in-the-Loop Guarded Ingestion & Approval Gate
