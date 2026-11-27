@@ -13,7 +13,6 @@ Implements deterministic, closed-form financial forecasting:
 """
 
 import sqlite3
-from datetime import datetime
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 
@@ -23,12 +22,14 @@ from engine.models import (
     SimulationResult,
     paise_to_rupees,
 )
-from engine.reconciler import sweep_refund_sla, parse_iso_date
+from engine.forecast import FIXTURES, forecast_context
 
 
 class ConsequenceEngine:
-    def __init__(self, db_path: str):
+    def __init__(self, db_path: str, statement_path=None, calendar_path=None):
         self.db_path = db_path
+        self.statement_path = Path(statement_path) if statement_path is not None else FIXTURES / "bank_statements.csv"
+        self.calendar_path = Path(calendar_path) if calendar_path is not None else FIXTURES / "calendar_bills.json"
 
     def _get_connection(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path)
@@ -65,89 +66,27 @@ class ConsequenceEngine:
         reference_date: str = "2026-11-18",
     ) -> ConsequenceReport:
         """
-        Executes all four deterministic consequence detectors and computes cash allowances.
+        Executes read-only dated consequence detectors and computes cash allowances.
         """
-        conn = self._get_connection()
-        # Step 0: Run daily refund SLA sweep
-        sweep_refund_sla(conn, reference_date)
+        # Streamlit may reload the contracts before this module. Resolve the
+        # current constructor here instead of retaining an older model class.
+        from engine.models import ConsequenceReport
 
-        cursor = conn.cursor()
-
-        # Date parameters
-        ref_dt = parse_iso_date(reference_date)
-        day_elapsed = ref_dt.day  # e.g. 18
-        # Calculate days in month (November = 30)
-        days_in_month = 30
-        days_remaining = max(1, days_in_month - day_elapsed)  # e.g. 12
-
-        # Load budget profile & allocations
-        budget_ctx = self.get_budget_context(month_key)
-        profile = budget_ctx["profile"]
-        allocations = budget_ctx["allocations"]
-        alloc_map = {a["category"]: a for a in allocations}
-
-        monthly_income = profile["monthly_income_paise"]
+        context = forecast_context(self, month_key, reference_date)
+        profile = context["profile"]
+        allocations = context["allocations"]
+        alloc_map = {allocation["category"]: allocation for allocation in allocations}
+        day_elapsed = int(reference_date[8:10])
+        days_remaining = context["days_remaining"]
         savings_target = profile["savings_target_paise"]
-        emergency_buffer = profile["emergency_buffer_paise"]
-
-        # Load lifecycles
-        cursor.execute("SELECT * FROM transaction_lifecycles")
-        lifecycles = [dict(r) for r in cursor.fetchall()]
-
-        # Load subscriptions
-        cursor.execute("SELECT * FROM subscriptions")
-        subscriptions = [dict(r) for r in cursor.fetchall()]
-
-        # Calculate category spending breakdowns
-        # S_cat: settled net spend (DEBITED) excluding one-time anomalies
-        # PendingCommitted: ORDERED items
-        category_settled: Dict[str, int] = {}
-        category_pending: Dict[str, int] = {}
-        total_settled_variable = 0
-        total_pending_orders = 0
-        total_paid_fixed = 0
-
-        for lc in lifecycles:
-            cat = lc["category"]
-            status = lc["lifecycle_status"]
-            amt = lc["expected_amount_paise"]
-            settled = lc["settled_net_paise"]
-            is_anomaly = bool(lc.get("is_one_time_spike", 0))
-
-            is_fixed = alloc_map.get(cat, {}).get("is_fixed", 0) == 1
-
-            if status == "DEBITED":
-                if is_fixed:
-                    total_paid_fixed += settled
-                else:
-                    total_settled_variable += settled
-                    if not is_anomaly:
-                        category_settled[cat] = category_settled.get(cat, 0) + settled
-            elif status == "ORDERED":
-                total_pending_orders += amt
-                category_pending[cat] = category_pending.get(cat, 0) + amt
-            elif status == "REFUND_OVERDUE":
-                # Cash is debited and missing; counts against cash availability
-                if not is_fixed:
-                    total_settled_variable += settled
-
-        # Fixed bill commitments
-        # Rent ₹15,000 due 28th, Subscriptions ₹1,000
-        upcoming_unpaid_fixed = 0
-        upcoming_fixed_bills: List[Dict[str, Any]] = []
-        for alloc in allocations:
-            if alloc.get("is_fixed", 0) == 1:
-                due_day = alloc.get("due_day")
-                cat = alloc["category"]
-                alloc_amt = alloc["allocated_paise"]
-                # If due later in the month
-                if due_day and due_day >= day_elapsed:
-                    upcoming_unpaid_fixed += alloc_amt
-                    upcoming_fixed_bills.append({
-                        "category": cat,
-                        "amount_paise": alloc_amt,
-                        "due_day": due_day,
-                    })
+        lifecycles = context["lifecycles"]
+        subscriptions = context["subscriptions"]
+        category_settled = {item["category"]: item["recurring_paise"] for item in context["categories"]}
+        category_pending = {item["category"]: item["pending_paise"] for item in context["categories"]}
+        total_settled_variable = sum(row["settled_net_paise"] for row in context["monthly_lifecycles"]
+                                     if not alloc_map.get(row["category"], {}).get("is_fixed", 0))
+        total_pending_orders = context["pending_paise"]
+        upcoming_unpaid_fixed = context["fixed_paise"]
 
         alerts: List[Alert] = []
 
@@ -218,9 +157,7 @@ class ConsequenceEngine:
         # =====================================================================
         # DETECTOR 3: Stacked Upcoming Outflows vs. Liquid Cash (Scenario B)
         # =====================================================================
-        # Liquid balance on day 18 = ₹19,300 (1,930,000 paise)
-        # Remaining liquid cash before payday
-        remaining_liquid_cash = 1930000  # ₹19,300 as specified in seed & bank statement
+        remaining_liquid_cash = context["balance_paise"]
         total_commitments_due = total_pending_orders + upcoming_unpaid_fixed
 
         if total_commitments_due > remaining_liquid_cash:
@@ -230,12 +167,12 @@ class ConsequenceEngine:
                     kind="STACKED_OUTFLOWS",
                     impact_paise=shortfall,
                     message=(
-                        f"Cash flow collision detected: {len(category_pending)} pending orders "
+                        f"Cash flow collision detected: {sum(row['lifecycle_status'] == 'ORDERED' for row in lifecycles)} pending orders "
                         f"totaling {paise_to_rupees(total_pending_orders)} collide with "
                         f"upcoming rent & bills of {paise_to_rupees(upcoming_unpaid_fixed)}. "
                         f"Total outflows due ({paise_to_rupees(total_commitments_due)}) exceed "
                         f"liquid balance ({paise_to_rupees(remaining_liquid_cash)}), causing a "
-                        f"{paise_to_rupees(shortfall)} shortfall before payday on the 28th."
+                        f"{paise_to_rupees(shortfall)} shortfall against the recorded balance as of {context['balance_as_of']}."
                     ),
                 )
             )
@@ -263,19 +200,10 @@ class ConsequenceEngine:
         # Rank alerts descending by impact_paise
         alerts.sort(key=lambda a: a.impact_paise, reverse=True)
 
-        # Safe-to-Spend Calculation (Section 4.4)
-        # C_disp = Income - PaidFixed - UpcomingUnpaidFixed - TotalSettledVariable - PendingOrders - SavingsTarget
-        c_disp = (
-            monthly_income
-            - total_paid_fixed
-            - upcoming_unpaid_fixed
-            - total_settled_variable
-            - total_pending_orders
-            - savings_target
-        )
+        # The statement balance already reflects paid expenses. Reserve only
+        # outstanding commitments, savings, and the emergency buffer from here.
+        c_disp = context["discretionary_paise"]
         safe_to_spend_today = max(0, c_disp // max(1, days_remaining))
-
-        conn.close()
 
         return ConsequenceReport(
             month_key=month_key,
@@ -286,6 +214,11 @@ class ConsequenceEngine:
             settled_variable_paise=total_settled_variable,
             pending_committed_paise=total_pending_orders,
             remaining_liquid_cash_paise=remaining_liquid_cash,
+            discretionary_cash_paise=c_disp,
+            upcoming_fixed_paise=upcoming_unpaid_fixed,
+            cash_flow_shortfall_paise=context["bill_shortfall_paise"],
+            balance_as_of=context["balance_as_of"],
+            balance_basis=context["balance_basis"],
         )
 
     def simulate_purchase_decision(
@@ -303,62 +236,56 @@ class ConsequenceEngine:
           - Category budget overrun
           - Potential collision with upcoming rent or fixed bills
         """
-        report_before = self.run_consequence_engine(month_key, reference_date)
-        before_safe = report_before.safe_to_spend_today_paise
+        from engine.models import SimulationResult
 
-        budget_ctx = self.get_budget_context(month_key)
-        alloc_map = {a["category"]: a for a in budget_ctx["allocations"]}
-        cat_alloc = alloc_map.get(category, {}).get("allocated_paise", 0)
-
-        # Check existing spend in category
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT SUM(settled_net_paise) as spent
-            FROM transaction_lifecycles
-            WHERE category = ? AND lifecycle_status = 'DEBITED'
-            """,
-            (category,),
-        )
-        row = cursor.fetchone()
-        spent_so_far = row["spent"] or 0
-        conn.close()
-
-        ref_dt = parse_iso_date(reference_date)
-        days_remaining = max(1, 30 - ref_dt.day)
-
-        # After spending amount_paise:
-        # Disposable cash drops by amount_paise
-        safe_after = max(0, before_safe - (amount_paise // days_remaining))
-
-        # Check category overrun
-        new_total_cat = spent_so_far + amount_paise
-        cat_overrun = max(0, new_total_cat - cat_alloc)
-
-        # Check fixed bill collision
-        # Liquid cash is ₹19,300; upcoming rent is ₹15,000; pending orders ₹7,400
-        liquid_cash = report_before.remaining_liquid_cash_paise
-        rent_and_fixed = 1500000  # Rent due on 28th
-        pending = report_before.pending_committed_paise
-
-        collides = (amount_paise + pending + rent_and_fixed) > liquid_cash
-        colliding_bill = "Greenwood Apts Rent (₹15,000 due Nov 28)" if collides else None
-
+        if type(amount_paise) is not int or amount_paise < 0:
+            raise ValueError("Purchase amount must be a nonnegative integer in paise.")
+        context = forecast_context(self, month_key, reference_date)
+        category_context = next((item for item in context["categories"] if item["category"] == category), None)
+        if category_context is None:
+            raise ValueError("Choose a discretionary category with a budget allocation.")
+        cat_alloc = category_context["budget_paise"]
+        spent_so_far = category_context["actual_paise"]
+        category_pending = category_context["pending_paise"]
+        before_disposable = context["discretionary_paise"]
+        after_disposable = before_disposable - amount_paise
+        before_safe = max(0, before_disposable // context["days_remaining"])
+        safe_after = max(0, after_disposable // context["days_remaining"])
+        cat_overrun_before = max(0, spent_so_far + category_pending - cat_alloc)
+        cat_overrun = max(0, spent_so_far + category_pending + amount_paise - cat_alloc)
+        liquid_cash = context["balance_paise"]
+        after_cash = liquid_cash - amount_paise
+        before_shortfall = context["bill_shortfall_paise"]
+        after_shortfall = max(0, context["fixed_paise"] + context["pending_paise"] - after_cash)
+        added_shortfall = after_shortfall - before_shortfall
+        collides = after_shortfall > 0
+        # Identify the first scheduled bill that cannot be fully covered once orders are reserved.
+        available = after_cash - context["pending_paise"]
+        colliding_bill = None
+        for bill in context["commitments"]:
+            available -= bill["amount_paise"]
+            if available < 0:
+                colliding_bill = f"{bill['name']} (due {bill['due_date']})"
+                break
         notes = []
-        if collides:
-            shortfall = (amount_paise + pending + rent_and_fixed) - liquid_cash
-            notes.append(
-                f"WARNING: Purchasing {paise_to_rupees(amount_paise)} at {merchant} will cause a "
-                f"{paise_to_rupees(shortfall)} shortfall when rent is due on the 28th!"
-            )
-        if cat_overrun > 0:
-            notes.append(
-                f"Budget Overrun: This purchase pushes '{category}' over budget by {paise_to_rupees(cat_overrun)}."
-            )
-        notes.append(
-            f"Daily safe-to-spend allowance drops from {paise_to_rupees(before_safe)}/day to {paise_to_rupees(safe_after)}/day."
-        )
+        if before_shortfall:
+            notes.append(f"Bills and pending orders already exceed cash by {paise_to_rupees(before_shortfall)}. "
+                         f"This purchase adds {paise_to_rupees(added_shortfall)}, bringing the shortfall to {paise_to_rupees(after_shortfall)}.")
+        elif after_shortfall:
+            notes.append(f"This purchase creates a {paise_to_rupees(after_shortfall)} shortfall for existing bills and pending orders.")
+        elif after_disposable < 0:
+            notes.append("Bills and pending orders remain covered, but the purchase does not leave enough cash to protect the full savings goal and emergency buffer.")
+        else:
+            notes.append("Recorded cash covers this purchase, outstanding bills, pending orders, the savings goal, and the emergency buffer.")
+        if cat_overrun_before:
+            notes.append(f"This category is already {paise_to_rupees(cat_overrun_before)} over budget, including one-time expenses and pending orders. "
+                         f"The purchase adds {paise_to_rupees(cat_overrun - cat_overrun_before)} to that overrun.")
+        elif cat_overrun:
+            notes.append(f"This purchase adds {paise_to_rupees(cat_overrun)} of category budget overrun.")
+        if before_safe == 0 and safe_after == 0:
+            notes.append("No daily allowance is available before or after the purchase because protected reserves already exceed cash. See the signed cash remainder below.")
+        else:
+            notes.append(f"Daily allowance changes from {paise_to_rupees(before_safe)} to {paise_to_rupees(safe_after)}.")
 
         return SimulationResult(
             amount_paise=amount_paise,
@@ -370,4 +297,22 @@ class ConsequenceEngine:
             collides_with_fixed_bill=collides,
             colliding_bill_name=colliding_bill,
             notes=notes,
+            discretionary_before_paise=before_disposable,
+            discretionary_after_paise=after_disposable,
+            bill_shortfall_before_paise=before_shortfall,
+            bill_shortfall_after_paise=after_shortfall,
+            additional_bill_shortfall_paise=added_shortfall,
+            category_overrun_before_paise=cat_overrun_before,
+            additional_category_overrun_paise=cat_overrun - cat_overrun_before,
+            liquid_cash_before_paise=liquid_cash,
+            liquid_cash_after_paise=after_cash,
+            upcoming_fixed_paise=context["fixed_paise"],
+            pending_committed_paise=context["pending_paise"],
+            savings_reserved_paise=context["profile"]["savings_target_paise"],
+            emergency_reserved_paise=context["profile"]["emergency_buffer_paise"],
+            category_spent_paise=spent_so_far,
+            category_pending_paise=category_pending,
+            category_budget_paise=cat_alloc,
+            balance_as_of=context["balance_as_of"],
+            balance_basis=context["balance_basis"],
         )

@@ -87,8 +87,13 @@ $$\text{MonthlyIncome} = \sum \text{FixedCommitments} + \sum \text{VariableAlloc
 - **Weekly Course Correction:** $\text{WeeklyTrim} = \lfloor (\text{Overrun}_{\text{cat}} \times 7) / D_{\text{rem}} \rfloor$
 
 ### 4.3 Safe-to-Spend Allowance
-$$C_{\text{disp}} = \text{Income} - \text{PaidFixed} - \text{UpcomingFixed} - \text{TotalSettledVariable} - \text{PendingOrders} - \text{SavingsTarget}$$
+$$C_{\text{disp}} = \text{DatedCashBalance} - \text{UnpaidBills} - \text{PendingOrders} - \text{SavingsTarget} - \text{EmergencyBuffer}$$
 $$S_{\text{today}} = \max\left(0, \left\lfloor \frac{C_{\text{disp}}}{D_{\text{rem}}} \right\rfloor\right)$$
+
+The cash balance uses the latest statement on or before the reference date, adjusted for later
+posted ledger activity through that date. Paid expenses are already in this balance and are
+not deducted again. Unpaid calendar bills remain reserved after their due dates. If no statement
+exists for the cycle, the dashboard explicitly labels its budget/ledger balance as an estimate.
 
 ### 4.4 Savings Erosion
 $$\text{ProjectedSavings} = \max\left(0, \text{SavingsTarget} - \sum \text{Overrun}\right)$$
@@ -194,6 +199,20 @@ Launch the visual Streamlit dashboard:
 ```bash
 streamlit run app/dashboard.py
 ```
+
+The dashboard includes a financial overview with savings progress, ranked consequence alerts,
+category spending projections, and scheduled fixed allocations. Use the sidebar to open the
+purchase simulator, search and export transaction lifecycles, or preview and approve source
+reconciliation. Refund and cancellation drafts can be reviewed, edited, and downloaded locally.
+
+The workspace is explicitly a demo snapshot. Its reference date defaults to November 18, 2026;
+changing it uses balances and transaction events through that date, excluding later spending.
+Linked events reconstruct lifecycle status; seeded records without event history use their
+recorded transaction dates. The simulator shares the overview's cash and bill calculations,
+separates existing deficits from additional purchase impact, and shows the full cash breakdown.
+To use an isolated ledger, set `FINGUARD_DB_PATH` to its absolute path before starting Streamlit.
+
+Run the engine and dashboard workflow checks together with `python -m pytest tests -q`.
 
 ---
 

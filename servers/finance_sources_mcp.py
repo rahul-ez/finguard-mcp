@@ -32,7 +32,7 @@ from engine.models import (
 mcp = FastMCP("finance_sources")
 
 FIXTURES_DIR = PROJECT_ROOT / "fixtures"
-DB_PATH = PROJECT_ROOT / "db" / "finguard.db"
+DB_PATH = Path(os.environ.get("FINGUARD_DB_PATH", PROJECT_ROOT / "db" / "finguard.db")).resolve()
 
 
 def sha256_hash(text: str) -> str:

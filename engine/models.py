@@ -110,6 +110,11 @@ class ConsequenceReport(BaseModel):
     settled_variable_paise: int
     pending_committed_paise: int
     remaining_liquid_cash_paise: int
+    discretionary_cash_paise: int = 0
+    upcoming_fixed_paise: int = 0
+    cash_flow_shortfall_paise: int = 0
+    balance_as_of: str = ""
+    balance_basis: str = "bank_statement"
 
 
 class SimulationResult(BaseModel):
@@ -123,6 +128,24 @@ class SimulationResult(BaseModel):
     collides_with_fixed_bill: bool
     colliding_bill_name: Optional[str] = None
     notes: List[str]
+    discretionary_before_paise: int = 0
+    discretionary_after_paise: int = 0
+    bill_shortfall_before_paise: int = 0
+    bill_shortfall_after_paise: int = 0
+    additional_bill_shortfall_paise: int = 0
+    category_overrun_before_paise: int = 0
+    additional_category_overrun_paise: int = 0
+    liquid_cash_before_paise: int = 0
+    liquid_cash_after_paise: int = 0
+    upcoming_fixed_paise: int = 0
+    pending_committed_paise: int = 0
+    savings_reserved_paise: int = 0
+    emergency_reserved_paise: int = 0
+    category_spent_paise: int = 0
+    category_pending_paise: int = 0
+    category_budget_paise: int = 0
+    balance_as_of: str = ""
+    balance_basis: str = "bank_statement"
 
 
 class DraftPackage(BaseModel):
